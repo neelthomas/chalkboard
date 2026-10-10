@@ -1,9 +1,14 @@
-﻿# Chalkboard
+# Chalkboard
 
 **Explainable match intelligence from synthetic football data.**
 
-Entry for *Inside the Game: Developer Hackathon* (Microsoft Ã— Premier League).
+Entry for *Inside the Game: Developer Hackathon* (Microsoft x Premier League).
 Submissions close **27 October 2026**.
+
+> This file is kept in plain ASCII on purpose. Editing it through tools that
+> re-encode UTF-8 has already corrupted it once, and a README that renders as
+> mojibake is a bad first impression for a judge. `tools/fix_encoding.py`
+> enforces the same rule across the source tree.
 
 ---
 
@@ -18,33 +23,33 @@ deterministic metrics engine computes what is true; a **Fact Ledger** records
 each claim with pointers to the exact tracking frames and events behind it;
 an adversarial **Verifier** rejects any sentence the ledger does not support.
 
-Click any sentence in the narrative and the events behind it light up on the
-pitch.
+Click any claim and the evidence behind it lights up on the pitch.
 
-Because the data is synthetic, there is ground truth â€” so Chalkboard measures
-and reports its own hallucination rate, which is the metric that currently
-keeps AI narrative out of broadcast.
+Because the data is synthetic there is ground truth, so Chalkboard can measure
+its own accuracy - and will measure its own hallucination rate, which is the
+metric that currently keeps AI narrative out of broadcast.
 
 ---
 
 ## Status
 
-| Component | State |
-|---|---|
-| Four data contracts | âœ… done, tested |
-| Match fixtures (fictional clubs) | âœ… done, tested |
-| Tracking simulator | âœ… motion, possession, shooting, goals, restarts |
-| Football maths (`football.py`) | âœ… xG, angles, progressive, pass difficulty |
-| Match viewer | âœ… `python -m chalkboard.viewer` |
-| Metrics engine | âœ… `TrackingFrame` â†’ `MatchEvent`, 100% recall |
-| Control / pressure / rhythm indices | âœ… brief (iv) |
-| Fact Ledger + deterministic claims | âœ… 290 claims/match, all traceable |
-| Agents (Analyst / Verifier / Storyteller / Director) | â¬œ **next** |
-| Fact Ledger | â¬œ |
-| Agents (Scout / Analyst / Verifier / Storyteller / Director / Producer) | â¬œ |
-| Overlay renderer + frontend | â¬œ |
-| Eval harness | â¬œ |
-| Azure deployment (`azd up`) | â¬œ |
+| Component | State | |
+|---|---|---|
+| Four data contracts | **done** | tested |
+| Match fixtures (fictional clubs) | **done** | tested |
+| Tracking simulator | **done** | motion, possession, shooting, goals, restarts |
+| Football maths (`football.py`) | **done** | xG, angles, progressive, pass difficulty |
+| Metrics engine | **done** | `TrackingFrame` -> `MatchEvent`, 100% recall |
+| Control / pressure / rhythm indices | **done** | brief (iv) |
+| Fact Ledger + deterministic claims | **done** | ~290 claims/match, all traceable |
+| Director + overlay packets | **done** | brief (d) |
+| Viewer with clickable provenance | **done** | the demo's centrepiece |
+| Analyst / Verifier / Storyteller agents | *next* | needs a Foundry endpoint |
+| Eval harness (hallucination rate) | - | |
+| Multi-language storytelling | - | brief (vi) |
+| Azure deployment (`azd up`) | - | |
+
+144 tests.
 
 ---
 
@@ -57,53 +62,26 @@ python -m chalkboard.fixtures     # print the two squads
 ```
 
 A full 90-minute match generates in about 20 seconds, so the same seed can be
-replayed instantly during development and streamed at 1Ã— for the demo.
+replayed instantly during development and streamed at 1x for the demo.
 
 ### Watch a match
 
 ```bash
-python -m chalkboard.viewer                   # 10 min of seed 7
-python -m chalkboard.viewer --seed 12 --full  # whole match
+python -m chalkboard.viewer                     # 10 min of seed 7
+python -m chalkboard.viewer --seed 12 --full    # whole match
+python -m chalkboard.viewer --minutes 30 --hz 8
 ```
 
 Writes a self-contained HTML file to `out/` and opens it. No server, no
-dependencies â€” the data is embedded, so the file can be sent to someone.
+dependencies - the data is embedded, so the file can be sent to someone.
+
+The claim feed sits beside the pitch. **Click any claim and the match seeks to
+the moment it describes, the players it is about are ringed, and the pass or
+shot behind it is drawn on the pitch.** That is the whole argument of the
+project made visible: the sentence is not a story about the match, it is a
+pointer into it.
+
 Space plays and pauses, arrow keys step frame by frame, hover for pace.
-
-### Is the football plausible?
-
-```bash
-python tools/sim_report.py
-```
-
-Measured over a full 90 minutes, not extrapolated â€” shots and goals are too
-rare for extrapolation to mean anything. Seed 7:
-
-| | Chalkboard | Target |
-|---|---|---|
-| Outfield distance | 9,782 m | 9â€“12 km |
-| Mean speed | 1.6 m/s | 1.3â€“1.8 |
-| Top speed | 8.2 m/s | 8â€“10 |
-| Passes, both teams | 1,018 | 800â€“1,100 |
-| Completion | 85.0 % | 75â€“88 % |
-| Mean pass | 19.3 m | 15â€“20 m |
-| Shots, both teams | 35 | 20â€“30 |
-| On target | 46 % | ~35 % |
-| Goals | 4 | 2â€“3.5 |
-| xG, both teams | 2.64 | 2â€“3.5 |
-
-Caveat worth stating: those targets are *match-average* figures being applied
-to single matches, which is statistically the wrong comparison. Real matches
-vary enormously â€” 0â€“0 and 5â€“0 are both ordinary results. Seed-to-seed spread
-of goals and xG is expected, and a seed landing outside a band is not by
-itself a bug. Run several seeds (`python tools/sim_report.py 21`) before
-concluding anything.
-
-`tests/test_simulator.py` holds looser versions of these bands as regression
-tests. One of them exists for a specific reason: positional noise was
-originally resampled every tick, which at 25 Hz pinned all 22 players at a
-permanent 5.1 m/s sprint and produced 28 km per player per 90. It passed every
-functional test. It took one look at the viewer to spot.
 
 ---
 
@@ -114,37 +92,75 @@ src/chalkboard/
   contracts.py        the four data contracts - read this first
   football.py         pure football maths: xG, angles, pass difficulty
   fixtures.py         deterministic MatchMeta, fictional clubs and players
-  sim/engine.py       tracking simulator
-  metrics/events.py   frames -> MatchEvents          brief (b)
-  metrics/indices.py  control, pressure, rhythm      brief (iv)
+  sim/engine.py       tracking simulator                   brief (a)
+  metrics/events.py   frames -> MatchEvents                brief (b)
+  metrics/indices.py  control, pressure, rhythm            brief (iv)
   metrics/pipeline.py one streaming pass over a match
-  ledger/store.py     the Fact Ledger                brief (c)
+  ledger/store.py     the Fact Ledger                      brief (c)
   ledger/claims.py    deterministic claim builders
   ledger/build.py     frames -> populated ledger
+  director.py         ledger -> OverlayPackets             brief (d)
   viewer.py           self-contained HTML match viewer
 tools/
   sim_report.py       realism diagnostics
   metrics_report.py   detection accuracy vs ground truth
   ledger_report.py    claim mix, supersession, provenance
-tests/                100 tests
+  director_report.py  what reaches the screen, and what is dropped
+  fix_encoding.py     keep the tree pure ASCII
 ```
 
 `football.py` is deliberately separate and free of randomness and I/O. The
-simulator and the metrics engine both import it, so a shot's xG is computed
-by exactly one function â€” which is what makes a ledger claim citing
+simulator and the metrics engine both import it, so a shot's xG is computed by
+exactly one function - which is what makes a ledger claim citing
 `shot_quality@0.1` reproducible years later.
 
 ### The four contracts
 
-| Contract | Written by â†’ read by |
+| Contract | Written by -> read by |
 |---|---|
-| `TrackingFrame` | simulator â†’ metrics engine |
-| `MatchEvent` | metrics engine â†’ Scout, Analyst |
-| `LedgerEntry` | Analyst â†’ Verifier, Storyteller |
-| `OverlayPacket` | Director â†’ frontend / rendering partner |
+| `TrackingFrame` | simulator -> metrics engine |
+| `MatchEvent` | metrics engine -> Analyst |
+| `LedgerEntry` | Analyst -> Verifier, Storyteller |
+| `OverlayPacket` | Director -> frontend / rendering partner |
 
 Conventions (metres, origin at the centre spot, `seq` as the only sort key)
 are documented at the top of `contracts.py`.
+
+---
+
+## Is the football plausible?
+
+```bash
+python tools/sim_report.py 7
+```
+
+Measured over a full 90 minutes, not extrapolated - shots and goals are too
+rare for extrapolation to mean anything. Seed 7:
+
+| | Chalkboard | Target |
+|---|---|---|
+| Outfield distance | 9,782 m | 9-12 km |
+| Mean speed | 1.6 m/s | 1.3-1.8 |
+| Top speed | 8.2 m/s | 8-10 |
+| Passes, both teams | 1,018 | 800-1,100 |
+| Completion | 85.0 % | 75-88 % |
+| Mean pass | 19.3 m | 15-20 m |
+| Shots, both teams | 35 | 20-30 |
+| On target | 46 % | ~35 % |
+| Goals | 4 | 2-3.5 |
+| xG, both teams | 2.64 | 2-3.5 |
+
+Caveat worth stating: those targets are *match-average* figures applied to
+single matches, which is statistically the wrong comparison. Real matches vary
+enormously - 0-0 and 5-0 are both ordinary results. Seed-to-seed spread is
+expected, and a seed outside a band is not by itself a bug. Run several seeds
+before concluding anything.
+
+`tests/test_simulator.py` holds looser versions of these bands as regression
+tests. One exists for a specific reason: positional noise was originally
+resampled every tick, which at 25 Hz pinned all 22 players at a permanent
+5.1 m/s sprint and produced 28 km per player per 90. It passed every
+functional test. It took one look at the viewer to spot.
 
 ---
 
@@ -155,8 +171,8 @@ python tools/metrics_report.py 7
 ```
 
 The detector reads `TrackingFrame`s and nothing else. It never imports the
-simulator â€” a test enforces that â€” so the same code would run unchanged over
-a real tracking feed.
+simulator - a test enforces that - so the same code would run unchanged over a
+real tracking feed.
 
 ### Does it actually work?
 
@@ -179,38 +195,37 @@ Holds across seeds. The occasional missing pass is one still in flight at the
 final whistle.
 
 **This is the argument for synthetic data, and it is the same mechanism that
-will later measure the narrative layer's hallucination rate.** It is the
-thing to put on a slide.
+will later measure the narrative layer's hallucination rate.**
 
 ### How a shot is detected
 
-Not by aiming at the goal. A flight ends either with a new owner at the ball
-â€” a pass â€” or with the ball jumping discontinuously, which means it went
-dead. Where play then restarts says what happened: from the centre spot means
-a goal was scored; from the edge of the goal area means saved, blocked or
-missed. That is the inference a human analyst makes from a tracking feed, and
-it needs no privileged knowledge.
+Not by aiming at the goal. A flight ends either with a new owner at the ball -
+a pass - or with the ball jumping discontinuously, which means it went dead.
+Where play then restarts says what happened: from the centre spot means a goal
+was scored; from the edge of the goal area means saved, blocked or missed.
+That is the inference a human analyst makes from a tracking feed, and it needs
+no privileged knowledge.
 
 ### The three indices
 
-Brief (iv) names its own primitives â€” "control vs. chaos, tactical pressure
-changes, and game rhythm patterns" â€” so those are the names used.
+Brief (iv) names its own primitives - "control vs. chaos, tactical pressure
+changes, and game rhythm patterns" - so those are the names used.
 
 None are published metrics. They are our own composites, which is exactly why
 each is defined in one place, versioned as `indices@0.1`, and **reports its
 components alongside its score**. A snapshot saying only "control 0.71" would
 be useless to the Analyst: it could state the number but not say why.
 
-Measured dynamic range over one match â€” an index that never moves cannot
-carry a narrative, however well calibrated:
+Measured dynamic range over one match - an index that never moves cannot carry
+a narrative, however well calibrated:
 
 | Index | Range | sd |
 |---|---|---|
-| control | 0.07 â€“ 0.93 | 0.15 |
-| rhythm | 0.02 â€“ 0.81 | 0.22 |
-| chaos | 0.27 â€“ 0.58 | 0.05 |
-| tempo | 7.0 â€“ 15.0 /min | 1.5 |
-| pressure | 0.23 â€“ 0.45 | 0.04 |
+| control | 0.07 - 0.93 | 0.15 |
+| rhythm | 0.02 - 0.81 | 0.22 |
+| chaos | 0.27 - 0.58 | 0.05 |
+| tempo | 7.0 - 15.0 /min | 1.5 |
+| pressure | 0.23 - 0.45 | 0.04 |
 
 ---
 
@@ -220,17 +235,13 @@ carry a narrative, however well calibrated:
 python tools/ledger_report.py 7
 ```
 
-Append-only. Every entry is one atomic, evidence-backed claim. The
-Storyteller may not write a sentence that is not backed by an entry here,
-and the Verifier is the gate that enforces it.
-
-A match produces ~290 claims. **All 290 carry evidence that reaches the
-tracking frames** â€” the contract refuses an entry without it, so the store
-never has to.
+Append-only. Every entry is one atomic, evidence-backed claim. The Storyteller
+may not write a sentence that is not backed by an entry here, and the Verifier
+is the gate that enforces it.
 
 | | |
 |---|---|
-| Claims | 290 |
+| Claims per match | 290 |
 | Superseded | 71 |
 | Evidence refs per claim | 1.8 |
 | With evidence | 290 / 290 |
@@ -240,59 +251,92 @@ never has to.
 
 No model call is involved. That ordering is deliberate: **the whole pipeline
 works, and is verifiable, before an LLM is involved anywhere.** The Analyst
-agent will later add causal claims on top â€” "because the press moved eight
-metres higher" â€” and those are the ones that actually need reasoning.
-Everything here is arithmetic, and arithmetic should never be delegated to a
-language model.
+will later add causal claims on top - "because the press moved eight metres
+higher" - and those are the ones that actually need reasoning. Everything here
+is arithmetic, and arithmetic should never be delegated to a language model.
 
 ### Claim text is deliberately flat
 
 > Hiro Lefevre scored for Calderwick City from 20.9 m, a chance worth 0.09
 > expected goals.
 
-That is a fact. Making it read well is the Storyteller's job. Keeping voice
-out of the ledger is what lets one entry serve a casual fan, an analyst and a
-broadcast caption without being rewritten â€” and what lets the Verifier check
-it against *evidence* rather than against prose.
+That is a fact. Making it read well is the Storyteller's job. Keeping voice out
+of the ledger is what lets one entry serve a casual fan, an analyst and a
+broadcast caption without being rewritten - and what lets the Verifier check it
+against *evidence* rather than against prose.
 
 ### Claims expire
 
 "Calderwick City are controlling the game" is true at 41' and false at 75'.
-Each new control claim supersedes the last, and `active_at(t)` answers what
-was still standing at a given moment.
+Each new control claim supersedes the last, and `active_at(t)` answers what was
+still standing at a given moment.
 
 Across a match: **108 pattern claims asserted, 3 still standing at full time.**
 Without that, a recap assembles a story out of stale facts and contradicts
-itself â€” which you would discover the night before the video.
+itself - which you would discover the night before the video.
+
+---
+
+## The Director
+
+```bash
+python tools/director_report.py 7
+```
+
+Stage (d) asks for insight "timed and machine-readable enough to be rendered as
+synchronized graphical overlays on a live match feed". So the Director does not
+produce pictures. It produces instructions: which graphic, carrying which
+numbers, on screen from when until when, at what priority. A rendering partner
+binds those to its own templates.
+
+That is why `OverlayPacket` keeps `data` separate from the text. Ship a
+pre-formatted sentence and the packet is only renderable as a caption.
+
+| | |
+|---|---|
+| Ledger claims | 290 |
+| Packets on screen | 248 |
+| Dropped to contention | 42 |
+| Screen time | 22.3 min of 90 |
+| Carrying provenance | 248 / 248 |
+
+A real feed cannot have two lower-thirds fighting for the same strip, so
+packets contend for a safe area and the higher priority keeps the slot. The
+loser is dropped rather than queued, because a stat bug about the 41st minute
+is worthless at the 44th. **Dropping is a decision, so it is counted.**
+
+`Director(meta, require_verified=True)` refuses to emit anything the Verifier
+has not passed. That switch is how the agent layer plugs in without the render
+path changing.
 
 ---
 
 ## How this maps to the challenge brief
 
-*Judging criterion 5 is "Adherence to Hackathon Category" at 20%. This table
-is the answer to it â€” keep it current.*
+*Judging criterion 5 is "Adherence to Hackathon Category" at 20%. This table is
+the answer to it - keep it current.*
 
-| Brief | Requirement | Where |
+| Brief | Requirement | State |
 |---|---|---|
-| (a) | **Ingest** synthetic match events as they happen | âœ… `sim/engine.py` â†’ Event Hubs |
-| (b) | **Interpret** into statistics, patterns and context | âœ… `metrics/events.py` |
-| (c) | **Explain** why a moment matters | â¬œ Analyst + Fact Ledger |
-| (d) | **Render** on screen alongside the match | ðŸŸ¡ viewer done, `OverlayPacket` pending |
-| (e) | **Personalize** â€” analyst vs casual fan | â¬œ `Lens` (player / club / metric Ã— depth) |
-| (ii) | Player identification, pass quality, speed metrics | âœ… tracking-level simulation |
-| (iii) | Narrative generation, milestones, recaps | â¬œ Storyteller |
-| (iv) | Explainability: control vs chaos, pressure, rhythm | âœ… `metrics/indices.py` |
-| (v) | Data innovation: synthetic football-realistic datasets | âœ… `sim/` â€” open-sourced |
-| (vi) | Multi-language storytelling | â¬œ `OverlayPacket.locale` |
+| (a) | **Ingest** synthetic match events as they happen | **done** - `sim/engine.py` |
+| (b) | **Interpret** into statistics, patterns and context | **done** - `metrics/events.py` |
+| (c) | **Explain** why a moment matters | *part* - Ledger done, Analyst pending |
+| (d) | **Render** on screen alongside the match | **done** - `director.py` + viewer |
+| (e) | **Personalize** - analyst vs casual fan | *part* - `Lens` carried, UI pending |
+| (ii) | Player identification, pass quality, speed metrics | **done** - tracking-level sim |
+| (iii) | Narrative generation, milestones, recaps | *part* - milestones done |
+| (iv) | Explainability: control vs chaos, pressure, rhythm | **done** - `metrics/indices.py` |
+| (v) | Data innovation: synthetic football-realistic datasets | **done** - `sim/`, open-sourced |
+| (vi) | Multi-language storytelling | - `OverlayPacket.locale` carried |
 
 ---
 
 ## Two rules that constrain the code
 
-1. **No third-party trademarks** (rules Â§4.4). Every club, player, venue and
+1. **No third-party trademarks** (rules 4.4). Every club, player, venue and
    competition name is invented and lives in `fixtures.py`. `test_fixtures.py`
    has a tripwire, but the real check is a human read before the video is cut.
-2. **No real match footage** (rules Â§4.7). Any computer-vision work runs over
+2. **No real match footage** (rules 4.7). Any computer-vision work runs over
    our own rendered match view, which we own outright.
 
 ---
@@ -300,12 +344,15 @@ is the answer to it â€” keep it current.*
 ## Development notes
 
 **Model response cache.** The simulator is seeded and deterministic, so every
-LLM call is cached on `(match_seed, event_id, agent, prompt_hash)` under
+LLM call will be cached on `(match_seed, event_id, agent, prompt_hash)` under
 `.cache/`. After one full run, iterating on the frontend or the demo script
-costs nothing. Do not skip this â€” without it you will re-run the same match
+costs nothing. Do not skip this - without it you will re-run the same match
 fifty times while tuning the UI and pay for every one.
 
 **Local first, deploy late.** Everything runs locally; the only remote
-dependency is the model endpoint. Infrastructure is written as code from the
-start but deployed near the end.
+dependency will be the model endpoint. Infrastructure is written as code from
+the start but deployed near the end.
 
+**Keep the tree ASCII.** `python tools/fix_encoding.py --check` fails if any
+source file carries a BOM or a non-ASCII byte. Non-ASCII output belongs in
+escapes the language understands.

@@ -68,6 +68,7 @@ class IndexSnapshot(Contract):
     cites only the headline number cannot be verified against the ledger.
     """
     method: str = f"indices@{VERSION}"
+    snapshot_id: str            # so a ledger claim can cite this exact window
     match_id: str
     period: int
     t_ms: int
@@ -238,6 +239,7 @@ class IndexEngine:
             ))
 
         return IndexSnapshot(
+            snapshot_id=f"ix_{frame.match_id}_{frame.seq:07d}",
             match_id=frame.match_id,
             period=frame.period,
             t_ms=frame.t_ms,

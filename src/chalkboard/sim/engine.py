@@ -1,4 +1,4 @@
-﻿"""
+"""
 engine.py - synthetic match simulator.
 
 Produces TrackingFrames at MatchMeta.tracking_hz. Seeded: same seed, same

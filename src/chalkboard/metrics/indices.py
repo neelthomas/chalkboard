@@ -1,4 +1,4 @@
-﻿"""
+"""
 indices.py - the three explainability primitives the brief names.
 
     (iv) "explain why moments matter, such as control vs. chaos,

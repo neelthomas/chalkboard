@@ -1,4 +1,4 @@
-﻿"""
+"""
 The Fact Ledger: append-only storage, supersession, provenance, and the
 deterministic claim builders.
 

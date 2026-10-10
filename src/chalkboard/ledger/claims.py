@@ -1,4 +1,4 @@
-﻿"""
+"""
 claims.py - deterministic claim builders.
 
 These turn events and index snapshots into LedgerEntries without any model

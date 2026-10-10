@@ -1,4 +1,4 @@
-﻿"""
+"""
 metrics_report.py - does the metrics engine recover what actually happened?
 
 The simulator knows the truth: it counted every pass, shot and goal as it

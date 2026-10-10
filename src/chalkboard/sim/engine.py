@@ -356,6 +356,20 @@ class MatchSimulator:
                             self.stats["passes"] += 1
                             self.stats["pass_distance_m"] += dist
                             shot_outcome = None
+
+                        # The ball leaves with velocity on the tick it is
+                        # released. Emitting a release frame at zero speed is
+                        # physically wrong, and it makes a live ball
+                        # indistinguishable from a dead one - the event
+                        # detector cannot tell a pass from a goal kick.
+                        tdx = flight_target[0] - ball_x
+                        tdy = flight_target[1] - ball_y
+                        tdist = math.hypot(tdx, tdy)
+                        if tdist > 1e-6:
+                            bvx = tdx / tdist * flight_speed
+                            bvy = tdy / tdist * flight_speed
+                            ball_x += bvx * self.dt
+                            ball_y += bvy * self.dt
                 else:
                     if flight_receiver is not None:
                         flight_target = (flight_receiver.x, flight_receiver.y)

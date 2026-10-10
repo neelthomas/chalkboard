@@ -36,8 +36,9 @@ keeps AI narrative out of broadcast.
 | Tracking simulator | ✅ motion, possession, shooting, goals, restarts |
 | Football maths (`football.py`) | ✅ xG, angles, progressive, pass difficulty |
 | Match viewer | ✅ `python -m chalkboard.viewer` |
-| Metrics engine | ⬜ **next** — `TrackingFrame` → `MatchEvent` |
-| Control / pressure / rhythm metrics | ⬜ brief (iv) |
+| Metrics engine | ✅ `TrackingFrame` → `MatchEvent`, 100% recall |
+| Control / pressure / rhythm indices | ✅ brief (iv) |
+| Fact Ledger | ⬜ **next** |
 | Fact Ledger | ⬜ |
 | Agents (Scout / Analyst / Verifier / Storyteller / Director / Producer) | ⬜ |
 | Overlay renderer + frontend | ⬜ |
@@ -109,13 +110,18 @@ functional test. It took one look at the viewer to spot.
 
 ```
 src/chalkboard/
-  contracts.py      the four data contracts - read this first
-  football.py       pure football maths: xG, angles, pass difficulty
-  fixtures.py       deterministic MatchMeta, fictional clubs and players
-  sim/engine.py     tracking simulator
-  viewer.py         self-contained HTML match viewer
-tools/sim_report.py realism diagnostics
-tests/              52 tests
+  contracts.py        the four data contracts - read this first
+  football.py         pure football maths: xG, angles, pass difficulty
+  fixtures.py         deterministic MatchMeta, fictional clubs and players
+  sim/engine.py       tracking simulator
+  metrics/events.py   frames -> MatchEvents          brief (b)
+  metrics/indices.py  control, pressure, rhythm      brief (iv)
+  metrics/pipeline.py one streaming pass over a match
+  viewer.py           self-contained HTML match viewer
+tools/
+  sim_report.py       realism diagnostics
+  metrics_report.py   detection accuracy vs ground truth
+tests/                76 tests
 ```
 
 `football.py` is deliberately separate and free of randomness and I/O. The
@@ -137,6 +143,72 @@ are documented at the top of `contracts.py`.
 
 ---
 
+## The metrics engine
+
+```bash
+python tools/metrics_report.py 7
+```
+
+The detector reads `TrackingFrame`s and nothing else. It never imports the
+simulator — a test enforces that — so the same code would run unchanged over
+a real tracking feed.
+
+### Does it actually work?
+
+The simulator counted every pass, shot and goal as it produced them. The
+detector has to work the same facts out from scratch. On a real feed you can
+never grade your own event detection, because nobody knows the right answer.
+Here we do:
+
+| | truth | detected | recall |
+|---|---|---|---|
+| Passes | 1,057 | 1,057 | 100% |
+| Completed | 877 | 877 | 100% |
+| Shots | 25 | 25 | 100% |
+| On target | 11 | 11 | 100% |
+| Blocked | 7 | 7 | 100% |
+| Goals | 2 | 2 | 100% |
+| xG | 1.85 | 1.85 | 99.8% |
+
+Holds across seeds. The occasional missing pass is one still in flight at the
+final whistle.
+
+**This is the argument for synthetic data, and it is the same mechanism that
+will later measure the narrative layer's hallucination rate.** It is the
+thing to put on a slide.
+
+### How a shot is detected
+
+Not by aiming at the goal. A flight ends either with a new owner at the ball
+— a pass — or with the ball jumping discontinuously, which means it went
+dead. Where play then restarts says what happened: from the centre spot means
+a goal was scored; from the edge of the goal area means saved, blocked or
+missed. That is the inference a human analyst makes from a tracking feed, and
+it needs no privileged knowledge.
+
+### The three indices
+
+Brief (iv) names its own primitives — "control vs. chaos, tactical pressure
+changes, and game rhythm patterns" — so those are the names used.
+
+None are published metrics. They are our own composites, which is exactly why
+each is defined in one place, versioned as `indices@0.1`, and **reports its
+components alongside its score**. A snapshot saying only "control 0.71" would
+be useless to the Analyst: it could state the number but not say why.
+
+Measured dynamic range over one match — an index that never moves cannot
+carry a narrative, however well calibrated:
+
+| Index | Range | sd |
+|---|---|---|
+| control | 0.07 – 0.93 | 0.15 |
+| rhythm | 0.02 – 0.81 | 0.22 |
+| chaos | 0.27 – 0.58 | 0.05 |
+| tempo | 7.0 – 15.0 /min | 1.5 |
+| pressure | 0.23 – 0.45 | 0.04 |
+
+---
+
 ## How this maps to the challenge brief
 
 *Judging criterion 5 is "Adherence to Hackathon Category" at 20%. This table
@@ -144,16 +216,16 @@ is the answer to it — keep it current.*
 
 | Brief | Requirement | Where |
 |---|---|---|
-| (a) | **Ingest** synthetic match events as they happen | `sim/engine.py` → Event Hubs |
-| (b) | **Interpret** into statistics, patterns and context | metrics engine |
-| (c) | **Explain** why a moment matters | Analyst + Fact Ledger |
-| (d) | **Render** on screen alongside the match | `OverlayPacket` + frontend |
-| (e) | **Personalize** — analyst vs casual fan | `Lens` (player / club / metric × depth) |
-| (ii) | Player identification, pass quality, speed metrics | tracking-level simulation |
-| (iii) | Narrative generation, milestones, recaps | Storyteller |
-| (iv) | Explainability: control vs chaos, pressure, rhythm | named metrics in the engine |
-| (v) | Data innovation: synthetic football-realistic datasets | `sim/` — open-sourced |
-| (vi) | Multi-language storytelling | `OverlayPacket.locale` |
+| (a) | **Ingest** synthetic match events as they happen | ✅ `sim/engine.py` → Event Hubs |
+| (b) | **Interpret** into statistics, patterns and context | ✅ `metrics/events.py` |
+| (c) | **Explain** why a moment matters | ⬜ Analyst + Fact Ledger |
+| (d) | **Render** on screen alongside the match | 🟡 viewer done, `OverlayPacket` pending |
+| (e) | **Personalize** — analyst vs casual fan | ⬜ `Lens` (player / club / metric × depth) |
+| (ii) | Player identification, pass quality, speed metrics | ✅ tracking-level simulation |
+| (iii) | Narrative generation, milestones, recaps | ⬜ Storyteller |
+| (iv) | Explainability: control vs chaos, pressure, rhythm | ✅ `metrics/indices.py` |
+| (v) | Data innovation: synthetic football-realistic datasets | ✅ `sim/` — open-sourced |
+| (vi) | Multi-language storytelling | ⬜ `OverlayPacket.locale` |
 
 ---
 

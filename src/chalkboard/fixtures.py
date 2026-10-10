@@ -147,6 +147,15 @@ def build_match(seed: int = 7) -> MatchMeta:
     )
 
 
+def attack_direction(meta: MatchMeta, team_id: str, period: int) -> float:
+    """+1 if this team shoots toward +x in this period, -1 otherwise."""
+    team = next(t for t in meta.teams if t.team_id == team_id)
+    info = next(p for p in meta.periods if p.period == period)
+    home_pos_x = info.home_attacks == AttackDirection.POS_X
+    attacks_pos_x = home_pos_x if team.side == Side.HOME else not home_pos_x
+    return 1.0 if attacks_pos_x else -1.0
+
+
 def anchors(meta: MatchMeta, team_id: str, period: int) -> dict[str, tuple[float, float]]:
     """
     Formation anchors for one team in a given period, in absolute pitch

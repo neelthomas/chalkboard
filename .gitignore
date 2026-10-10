@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+.pytest_cache/
+.ruff_cache/
+
+# generated match data - regenerate from a seed, never commit
+data/
+*.jsonl
+*.parquet
+
+# model response cache - see README, this is the token-saving one
+.cache/
+
+.env
+*.local
+.azure/
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+out/

@@ -67,10 +67,16 @@ replayed instantly during development and streamed at 1x for the demo.
 ### Watch a match
 
 ```bash
-python -m chalkboard.viewer                     # 10 min of seed 7
-python -m chalkboard.viewer --seed 12 --full    # whole match
+python -m chalkboard.viewer                       # 10 min of seed 7
+python -m chalkboard.viewer --seed 2 --full --hz 10   # the demo match
 python -m chalkboard.viewer --minutes 30 --hz 8
 ```
+
+**Seed 2 is the demo match**: Rivermead Athletic 4-1 Ashcombe Rovers, goals at
+14', 23', 41', 82' and 83'. Picked by `tools/pick_demo_seed.py`, which scans
+seeds and scores them on whether they are worth filming - both teams scoring,
+goals in both halves, a late goal, enough shots for the overlays to have work
+to do. A 0-0 makes the system look like it has nothing to say.
 
 Writes a self-contained HTML file to `out/` and opens it. No server, no
 dependencies - the data is embedded, so the file can be sent to someone.
@@ -106,7 +112,11 @@ tools/
   metrics_report.py   detection accuracy vs ground truth
   ledger_report.py    claim mix, supersession, provenance
   director_report.py  what reaches the screen, and what is dropped
+  pick_demo_seed.py   score seeds on whether they are worth filming
   fix_encoding.py     keep the tree pure ASCII
+docs/
+  submission.md       everything needed for the hackathon entry
+  demo-script.md      shot list and narration for the demo video
 ```
 
 `football.py` is deliberately separate and free of randomness and I/O. The

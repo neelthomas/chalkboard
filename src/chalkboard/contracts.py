@@ -284,6 +284,15 @@ class LedgerEntry(Contract):
     claim_type: ClaimType
     subject_ids: list[str]                      # players / teams this is about
 
+    # Brief (vi). The claim above is the canonical English rendering, kept
+    # because the Verifier checks one language against evidence rather than
+    # four against each other. `template` and `params` are what let the same
+    # fact render into any supported locale at the point it reaches a screen
+    # - see language.py. Storing a translated string per language on every
+    # entry would bloat the ledger and duplicate the thing being verified.
+    template: Optional[str] = None
+    params: dict = Field(default_factory=dict)
+
     value: Optional[float] = None
     unit: Optional[str] = None                  # "m/s", "%", "xG", "index"
     window_ms: Optional[tuple[int, int]] = None # what span it describes

@@ -44,12 +44,13 @@ metric that currently keeps AI narrative out of broadcast.
 | Fact Ledger + deterministic claims | **done** | ~290 claims/match, all traceable |
 | Director + overlay packets | **done** | brief (d) |
 | Viewer with clickable provenance | **done** | the demo's centrepiece |
-| Analyst / Verifier / Storyteller agents | *next* | needs a Foundry endpoint |
-| Eval harness (hallucination rate) | - | |
-| Multi-language storytelling | - | brief (vi) |
+| Player-focused mode | **done** | brief (e) |
+| Multi-language storytelling | **done** | brief (vi) - English, Spanish, French |
+| Analyst / Verifier / Storyteller agents | - | needs a model endpoint |
+| Eval harness (hallucination rate) | - | needs the agents |
 | Azure deployment (`azd up`) | - | |
 
-144 tests.
+163 tests.
 
 ---
 
@@ -97,6 +98,7 @@ Space plays and pauses, arrow keys step frame by frame, hover for pace.
 src/chalkboard/
   contracts.py        the four data contracts - read this first
   football.py         pure football maths: xG, angles, pass difficulty
+  language.py         claim templates per locale          brief (vi)
   fixtures.py         deterministic MatchMeta, fictional clubs and players
   sim/engine.py       tracking simulator                   brief (a)
   metrics/events.py   frames -> MatchEvents                brief (b)
@@ -321,6 +323,48 @@ path changing.
 
 ---
 
+## Personalisation and language
+
+Brief (e) asks that the same intelligence reach "a data-hungry analyst and a
+casual fan as two genuinely different experiences", and names **player
+focused mode** specifically. Brief (vi) asks for multi-language output.
+
+Both are in the viewer, and neither needs a model.
+
+### Player-focused mode
+
+Pick a player from the Focus menu. The claim feed filters to claims about
+them, they are ringed on the pitch and everyone else dims, and a live strip
+shows distance covered, top speed and current speed.
+
+It is the same ledger read through one lens, not a separate system. Every
+`OverlayPacket` already carries a `Lens` (player, club or metric), so a
+rendering partner can filter the same feed the same way.
+
+### Multi-language
+
+A ledger entry stores a **template key and parameters**, not a finished
+sentence, so one fact renders into any locale at the point it reaches a
+screen:
+
+| | |
+|---|---|
+| en-GB | Omar Hartnell scored for Rivermead Athletic from 20.8 m, a chance worth 0.09 expected goals. |
+| es-ES | Omar Hartnell marco para Rivermead Athletic desde 20,8 m, una ocasion de 0,09 goles esperados. |
+| fr-FR | Omar Hartnell a marque pour Rivermead Athletic a 20,8 m, une occasion valant 0,09 buts attendus. |
+
+Note the decimal commas - a Spanish caption reading "20.8 m" looks wrong to
+the audience it is for.
+
+Two design notes. Each **shape** of claim is a whole sentence per locale
+rather than assembled fragments, because gluing "a 27 m pass" to "past 6
+opponents" works in English and produces broken grammar in languages where
+the clauses inflect. And the English text stored on the entry is **rendered
+from the same template**, so the stored sentence and the localised one
+cannot drift apart. Adding a locale is adding one dict.
+
+---
+
 ## How this maps to the challenge brief
 
 *Judging criterion 5 is "Adherence to Hackathon Category" at 20%. This table is
@@ -332,12 +376,12 @@ the answer to it - keep it current.*
 | (b) | **Interpret** into statistics, patterns and context | **done** - `metrics/events.py` |
 | (c) | **Explain** why a moment matters | *part* - Ledger done, Analyst pending |
 | (d) | **Render** on screen alongside the match | **done** - `director.py` + viewer |
-| (e) | **Personalize** - analyst vs casual fan | *part* - `Lens` carried, UI pending |
+| (e) | **Personalize** - analyst vs casual fan | **done** - player-focused mode, club and metric lenses |
 | (ii) | Player identification, pass quality, speed metrics | **done** - tracking-level sim |
 | (iii) | Narrative generation, milestones, recaps | *part* - milestones done |
 | (iv) | Explainability: control vs chaos, pressure, rhythm | **done** - `metrics/indices.py` |
 | (v) | Data innovation: synthetic football-realistic datasets | **done** - `sim/`, open-sourced |
-| (vi) | Multi-language storytelling | - `OverlayPacket.locale` carried |
+| (vi) | Multi-language storytelling | **done** - `language.py`, 3 locales |
 
 ---
 

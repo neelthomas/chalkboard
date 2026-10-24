@@ -80,7 +80,24 @@ rush it and do not talk over the number.
 
 ---
 
-## 1:00 - 1:20   Explainability and expiry
+## 1:00 - 1:15   Made for one fan, in their language
+
+**Show:** pick a player from the Focus menu. The feed collapses from 255
+claims to that player's, he rings green, everyone else dims, the stat strip
+fills in. Then change Language to Espanol and let the whole feed re-render.
+
+**Say:**
+> The same match, read through one player - his claims, his distance, his
+> top speed. And the same intelligence in another language, because a claim
+> is stored as a fact and a template, not as an English sentence.
+
+Two switches, fifteen seconds, and it answers two of the brief's named
+requirements on screen. Do the language switch slowly enough that the text
+visibly changes - it is easy to miss at speed.
+
+---
+
+## 1:15 - 1:30   Explainability and expiry
 
 **Show:** the claim feed scrolling - control, pressure, tempo claims going
 past. Then the ledger report showing supersession.
@@ -97,7 +114,7 @@ past. Then the ledger report showing supersession.
 
 ---
 
-## 1:20 - 1:40   Render, for broadcast
+## 1:30 - 1:45   Render, for broadcast
 
 **Show:** overlay packets appearing in sync with the clock. Then cut briefly
 to a packet's JSON - timecodes, priority, `data` separate from text,
@@ -111,7 +128,7 @@ to a packet's JSON - timecodes, priority, `data` separate from text,
 
 ---
 
-## 1:40 - 1:58   Close
+## 1:45 - 1:58   Close
 
 **Show:** architecture diagram, three seconds. Then back to the viewer with a
 claim selected, held to the end.
@@ -136,8 +153,7 @@ End on the pitch, not on a slide.
   narration while clicking produces hesitation and mouse noise.
 - **Write the voiceover out and read it.** Improvised narration runs long,
   every time.
-- **Check the runtime after the first assembly.** If it is over 2:00, cut from
-  1:00-1:20 first and 0:00-0:12 second. Never cut the money shot or the
+- **Check the runtime after the first assembly.** If it is over 2:00, cut the explainability section first and the opening second. Never cut the money shot or the
   recall table.
 
 ## Before uploading

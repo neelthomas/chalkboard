@@ -24,6 +24,7 @@ import json
 import webbrowser
 from pathlib import Path
 
+from chalkboard import language
 from chalkboard.contracts import EventType
 from chalkboard.director import Director
 from chalkboard.fixtures import build_match
@@ -103,6 +104,14 @@ def export(seed: int, minutes: float | None, hz: int, open_browser: bool) -> Pat
         line = next((geometry[eid]["line"] for eid in trace["events"]
                      if eid in geometry), None)
         seqs = sorted(int(s) for s in trace["frames"] if s.isdigit())
+        # Brief (vi): every locale rendered up front, so the viewer can
+        # switch language without a round trip. Text is small next to the
+        # frame data - three locales adds well under a percent.
+        bodies = {loc: (language.render(entry.template, entry.params, loc)
+                        if entry.template else entry.claim)
+                  for loc in language.LOCALES}
+        heads = {loc: language.headline(entry.method, loc)
+                 for loc in language.LOCALES}
         claims.append({
             "id": entry.ledger_id,
             "row": to_row(seqs[0]) if seqs else to_row(
@@ -113,8 +122,8 @@ def export(seed: int, minutes: float | None, hz: int, open_browser: bool) -> Pat
             "prio": packet.priority,
             "type": packet.overlay_type.value,
             "area": packet.render_hints.safe_area if packet.render_hints else "full",
-            "head": packet.headline,
-            "body": packet.body,
+            "head": heads,
+            "body": bodies,
             "method": entry.method,
             "players": [index[s] for s in entry.subject_ids if s in index],
             "line": line,
@@ -142,6 +151,8 @@ def export(seed: int, minutes: float | None, hz: int, open_browser: bool) -> Pat
         "fps": effective_hz,
         "frames": frames,
         "claims": claims,
+        "locales": [{"code": loc, "name": language.LOCALE_NAMES[loc]}
+                    for loc in language.LOCALES],
     }
 
     out_dir = Path(__file__).resolve().parents[2] / "out"
@@ -193,6 +204,11 @@ _TEMPLATE = r"""<!doctype html>
   .teams { display:flex; gap:14px; align-items:center; font-size:13px;
            margin-bottom:10px; }
   .score { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .toolbar { display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+             margin-bottom:10px; font-size:12.5px; color:var(--muted); }
+  .toolbar label { display:flex; gap:6px; align-items:center; }
+  .toolbar select { max-width:230px; }
+  #focusStats { font-variant-numeric:tabular-nums; }
   .dot { display:inline-block; width:9px; height:9px; border-radius:50%;
          margin-right:6px; }
   .stage { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:14px; }
@@ -256,6 +272,16 @@ _TEMPLATE = r"""<!doctype html>
   <span class="sub" id="goalLog"></span>
 </div>
 
+<div class="toolbar">
+  <label>Focus
+    <select id="focus"><option value="-1">Whole match</option></select>
+  </label>
+  <label>Language
+    <select id="lang"></select>
+  </label>
+  <span class="sub" id="focusStats"></span>
+</div>
+
 <div class="stage">
   <div>
     <canvas id="pitch" width="1060" height="700"></canvas>
@@ -295,7 +321,7 @@ document.getElementById('fixture').textContent =
   `${D.competition} \u00b7 ${D.venue} \u00b7 seed ${D.seed}`;
 document.getElementById('homeName').textContent = `${D.home.name} (${D.home.formation})`;
 document.getElementById('awayName').textContent = `${D.away.name} (${D.away.formation})`;
-document.getElementById('claimCount').textContent = D.claims.length;
+/* claimCount is set by buildFeed, which knows the current filter */
 
 const scrub=document.getElementById('scrub');
 scrub.max=D.frames.length-1;
@@ -306,30 +332,87 @@ let i=0, playing=true, rate=1, acc=0, last=performance.now();
    claim and find its evidence on the pitch. */
 let hover=-1, picked=null;
 
+/* ---------- focus and language ---------- */
+let focusIdx=-1, locale=D.locales[0].code;
+
+const focusSel=document.getElementById('focus');
+for(const side of [true,false]){
+  const g=document.createElement('optgroup');
+  g.label = side ? D.home.name : D.away.name;
+  D.players.forEach((p,k)=>{ if(p.home===side){
+    const o=document.createElement('option');
+    o.value=k; o.textContent=`${p.shirt}  ${p.name}  (${p.pos})`;
+    g.appendChild(o);
+  }});
+  focusSel.appendChild(g);
+}
+
+const langSel=document.getElementById('lang');
+for(const l of D.locales){
+  const o=document.createElement('option'); o.value=l.code; o.textContent=l.name;
+  langSel.appendChild(o);
+}
+
 /* ---------- claim feed ---------- */
 const list=document.getElementById('list');
-const nodes=D.claims.map((c,k)=>{
-  const row=D.frames[Math.min(c.row,D.frames.length-1)];
-  const mins=row?Math.floor(row[1]/600)+(row[0]===1?0:45):0;
-  const el=document.createElement('div');
-  el.className='claim';
-  el.innerHTML=`<div class="m"><span>${mins}'</span><span class="h">${c.head}</span></div>`+
-    `<div class="b">${c.body}</div>`+
-    `<div class="p">${c.method} \u00b7 ${c.ev} event(s), ${c.fr} frame ref(s)</div>`;
-  el.onclick=()=>pick(k);
-  list.appendChild(el);
-  return el;
-});
+let nodes=[], shown=[];
+
+function visibleClaims(){
+  /* Brief (e): player-focused mode. The same ledger, read through one
+     player - not a different system, a different lens on it. */
+  return focusIdx<0 ? D.claims.map((c,k)=>[c,k])
+                    : D.claims.map((c,k)=>[c,k]).filter(([c])=>c.players.includes(focusIdx));
+}
+
+function buildFeed(){
+  list.innerHTML='';
+  shown=visibleClaims();
+  nodes=shown.map(([c,k])=>{
+    const row=D.frames[Math.min(c.row,D.frames.length-1)];
+    const mins=row?Math.floor(row[1]/600)+(row[0]===1?0:45):0;
+    const el=document.createElement('div');
+    el.className='claim';
+    el.innerHTML=`<div class="m"><span>${mins}'</span><span class="h">${c.head[locale]}</span></div>`+
+      `<div class="b">${c.body[locale]}</div>`+
+      `<div class="p">${c.method} \u00b7 ${c.ev} event(s), ${c.fr} frame ref(s)</div>`;
+    el.onclick=()=>pick(k);
+    list.appendChild(el);
+    return el;
+  });
+  document.getElementById('claimCount').textContent=shown.length;
+  if(picked){
+    const at=shown.findIndex(([,k])=>D.claims[k].id===picked.id);
+    if(at>=0) nodes[at].classList.add('sel');
+  }
+}
 
 function pick(k){
-  const c=D.claims[k];
-  picked=c;
+  picked=D.claims[k];
   nodes.forEach(n=>n.classList.remove('sel'));
-  nodes[k].classList.add('sel');
-  nodes[k].scrollIntoView({block:'nearest'});
-  i=Math.max(0,c.row-8);
+  const at=shown.findIndex(([,kk])=>kk===k);
+  if(at>=0){ nodes[at].classList.add('sel'); nodes[at].scrollIntoView({block:'nearest'}); }
+  i=Math.max(0,picked.row-8);
   playing=false; btn.textContent='Play';
   render();
+}
+
+focusSel.onchange=e=>{ focusIdx=+e.target.value; buildFeed(); render(); };
+langSel.onchange=e=>{ locale=e.target.value; buildFeed(); render(); };
+
+/* Distance and top speed are derived on demand rather than exported per
+   frame - 22 extra numbers on every row would add a third to the file for
+   a figure only one player needs at a time. */
+function focusStats(upTo){
+  if(focusIdx<0) return null;
+  let dist=0, top=0, px=null, py=null;
+  for(let k=0;k<=upTo;k++){
+    const f=D.frames[k];
+    const x=f[5+focusIdx*STRIDE], y=f[6+focusIdx*STRIDE], s=f[7+focusIdx*STRIDE];
+    if(px!==null) dist+=Math.hypot(x-px,y-py);
+    px=x; py=y; if(s>top) top=s;
+  }
+  const now=D.frames[upTo][7+focusIdx*STRIDE];
+  return {dist, top, now, claims: shown.length};
 }
 
 /* ---------- pitch ---------- */
@@ -371,10 +454,10 @@ function drawOverlay(c){
   ctx.fillStyle='#fff';
   ctx.font='600 15px ui-sans-serif,system-ui,sans-serif';
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillText(c.head,x+pad,y+11);
+  ctx.fillText(c.head[locale],x+pad,y+11);
   ctx.fillStyle='#c5cbd6';
   ctx.font='13px ui-sans-serif,system-ui,sans-serif';
-  const words=c.body.split(' '); let lineStr='', yy=y+32;
+  const words=c.body[locale].split(' '); let lineStr='', yy=y+32;
   for(const word of words){
     if(ctx.measureText(lineStr+word).width>w-pad*2){ ctx.fillText(lineStr,x+pad,yy); lineStr=''; yy+=16; if(yy>y+h-14) break; }
     lineStr+=word+' ';
@@ -404,17 +487,24 @@ function render(){
     const meta=D.players[p], cx=toX(x), cy=toY(y);
     const lift=Math.min(spd/7.5,1);
 
+    const dim = focusIdx>=0 && p!==focusIdx;
+
+    if(p===focusIdx){
+      ctx.beginPath(); ctx.arc(cx,cy,20,0,Math.PI*2);
+      ctx.strokeStyle='#4ade80'; ctx.lineWidth=2.5; ctx.stroke();
+    }
     if(ringed && ringed.has(p)){
-      ctx.beginPath(); ctx.arc(cx,cy,17,0,Math.PI*2);
+      ctx.beginPath(); ctx.arc(cx,cy,15,0,Math.PI*2);
       ctx.strokeStyle='#a78bfa'; ctx.lineWidth=3; ctx.stroke();
     }
     if(p===owner){
-      ctx.beginPath(); ctx.arc(cx,cy,13,0,Math.PI*2);
+      ctx.beginPath(); ctx.arc(cx,cy,12,0,Math.PI*2);
       ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
     }
     ctx.beginPath(); ctx.arc(cx,cy,p===hover?11:8.5,0,Math.PI*2);
-    ctx.fillStyle=meta.home?`rgba(56,189,248,${0.55+lift*0.45})`
-                           :`rgba(251,146,60,${0.55+lift*0.45})`;
+    const alpha = dim ? 0.22 : 0.55+lift*0.45;
+    ctx.fillStyle=meta.home?`rgba(56,189,248,${alpha})`
+                           :`rgba(251,146,60,${alpha})`;
     ctx.fill();
     ctx.fillStyle='#0b0d11';
     ctx.font='600 9px ui-sans-serif,system-ui,sans-serif';
@@ -455,6 +545,14 @@ function render(){
   }
   document.getElementById('score').innerHTML=`${hg} &ndash; ${ag}`;
   document.getElementById('goalLog').textContent=scored.join('  \u00b7  ');
+
+  const fs=focusStats(i);
+  document.getElementById('focusStats').textContent = fs
+    ? `${D.players[focusIdx].name}  \u00b7  ${(fs.dist/1000).toFixed(2)} km`
+      + `  \u00b7  top ${fs.top.toFixed(1)} m/s  \u00b7  now ${fs.now.toFixed(1)} m/s`
+      + `  \u00b7  ${fs.claims} claims`
+    : '';
+
   scrub.value=i;
 }
 
@@ -491,6 +589,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='ArrowLeft'){ playing=false; btn.textContent='Play'; i--; render(); }
 });
 
+buildFeed();
 render(); requestAnimationFrame(tick);
 </script>
 </body>

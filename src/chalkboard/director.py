@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
+from chalkboard import language
 from chalkboard.contracts import (
     ClaimType,
     LedgerEntry,
@@ -56,22 +57,18 @@ STYLE: dict[str, tuple[OverlayType, str, int, float]] = {
 DEFAULT_STYLE = (OverlayType.STAT_BUG, "upper_right", 2, 4.0)
 
 
-def _headline(entry: LedgerEntry, names: dict[str, str]) -> str:
-    """Short label for the graphic. The body carries the full claim."""
-    method = entry.method.split("@")[0]
-    subject = next((names[s] for s in entry.subject_ids if s in names), "")
-    return {
-        "goal_claim": "GOAL",
-        "scoring_milestone": "Milestone",
-        "shot_claim": "Shot",
-        "pass_claim": subject or "Pass",
-        "speed_milestone": "Top speed",
-        "distance_milestone": "Distance",
-        "control_state": "Control",
-        "pressure_state": "Press",
-        "tempo_compare": "Tempo",
-        "pressure_event": "Under pressure",
-    }.get(method, "Match")
+def _body(entry: LedgerEntry, locale: str) -> str:
+    """
+    The claim, in this packet's language. Brief (vi).
+
+    The entry stores a template key and its parameters, so the sentence is
+    rendered here rather than translated - see language.py. An entry
+    without a template (anything written before that existed, or by hand)
+    falls back to its canonical English.
+    """
+    if entry.template:
+        return language.render(entry.template, entry.params, locale)
+    return entry.claim
 
 
 class Director:
@@ -134,6 +131,8 @@ class Director:
             elif sid in self.teams:
                 data["team"] = self.team_names[sid]
 
+        text = _body(entry, self.locale)
+
         self._n += 1
         return OverlayPacket(
             packet_id=f"ov_{self._n:05d}",
@@ -144,9 +143,9 @@ class Director:
             overlay_type=overlay,
             lens=self._lens(entry),
             locale=self.locale,
-            headline=_headline(entry, self.player_names | self.team_names),
-            body=entry.claim,
-            speech_text=entry.claim,
+            headline=language.headline(entry.method, self.locale),
+            body=text,
+            speech_text=text,
             data=data,
             render_hints=RenderHints(safe_area=safe_area,
                                      animation_in="wipe" if priority >= 8

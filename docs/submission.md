@@ -20,6 +20,24 @@ submissions close, so create the page first and refine it afterwards.
 | Synthetic data only, no real footage | 4.7 | done - all fixtures invented |
 | No third-party trademarks | 4.4 | done in code; **check the video before upload** |
 
+### Brief coverage
+
+| | | |
+|---|---|---|
+| (a) Ingest | done | tracking simulator at 25 Hz |
+| (b) Interpret | done | 100% detection recall against ground truth |
+| (c) Explain | part | Fact Ledger done, Analyst agent not built |
+| (d) Render | done | overlay packets + viewer |
+| (e) Personalize | done | player-focused mode, club and metric lenses |
+| (ii) Metrics | done | speed, distance, pass difficulty, xG |
+| (iii) Narrative | part | milestones and recaps from templates |
+| (iv) Explainability | done | control vs chaos, pressure, rhythm |
+| (v) Data innovation | done | the simulator, open-sourced |
+| (vi) Multi-language | done | English, Spanish, French |
+
+Eight of ten fully, two partial. Both partials are the same gap: no model
+endpoint, so no Analyst. See below.
+
 ---
 
 ## Form fields
@@ -155,6 +173,28 @@ the Verifier check claims against **evidence** rather than against prose.
 The render path is already gated on it: `Director(require_verified=True)`
 emits nothing the Verifier has not passed.
 
+## Made for one fan, in their language
+
+Pick a player and the whole system reframes around them: the claim feed
+filters to claims about that player, they are highlighted on the pitch all
+match, and a live strip tracks distance covered, top speed and current pace.
+It is the same ledger read through one lens - every overlay packet already
+carries a lens of player, club or metric, so a rendering partner can filter
+the same feed the same way.
+
+Claims are stored as a **template key and parameters**, not as finished
+sentences, so one fact renders into any locale at the point it reaches a
+screen:
+
+| | |
+|---|---|
+| en-GB | Omar Hartnell scored for Rivermead Athletic from 20.8 m, a chance worth 0.09 expected goals. |
+| es-ES | Omar Hartnell marco para Rivermead Athletic desde 20,8 m, una ocasion de 0,09 goles esperados. |
+| fr-FR | Omar Hartnell a marque pour Rivermead Athletic a 20,8 m, une occasion valant 0,09 buts attendus. |
+
+Including the decimal commas - a Spanish caption reading "20.8 m" looks
+wrong to the audience it is for. Adding a language is adding one dictionary.
+
 ## Data
 
 All data is synthetic and football-realistic. Every club, player and venue
@@ -162,7 +202,7 @@ name is invented. No real match data or footage is used anywhere.
 
 ## Engineering
 
-144 tests. Deterministic and seeded - the same seed replays the same match
+163 tests. Deterministic and seeded - the same seed replays the same match
 exactly, which is what makes the accuracy figures above reproducible rather
 than anecdotal.
 ````
@@ -211,25 +251,34 @@ Full ranking: `python tools/pick_demo_seed.py 24` (takes about 8 minutes).
 Nothing else can attach to the submission until this exists. The Code
 Repository field only appears after the page is saved once.
 
-### 2. Decide the agent layer
+### 2. Record the video
 
-Criterion 2, Agentic Design, is 20% of the score and currently reads zero -
-there are no agents, everything is deterministic Python.
+**This is the one that decides the entry now.** 20% of the score, and
+nothing else outstanding is worth more. See `docs/demo-script.md` for the
+shot list, timings and narration.
 
-**Azure AI Foundry needs a subscription, which normally needs a credit card
-for identity verification** even on the free tier, unlike Fabric's trial.
+### The agent layer: dropped, deliberately
 
-**GitHub Models is the free path**: https://github.com/marketplace/models -
-rate-limited, authenticates with a GitHub token, no card. It will not win
-*Best Use of Microsoft Foundry*, but it would unblock the Analyst and
-Verifier, which is the 20% criterion rather than a 1,500-dollar category.
+Criterion 2, Agentic Design, is 20% and will score low. There are no agents;
+everything is deterministic Python.
 
-The Fact Ledger and the `require_verified` gate were built to receive these,
-so it is additive work, not a rewrite.
+That was a decision, not a drift. Building the Analyst and Verifier was
+about three days of work **once a model endpoint existed**, and no endpoint
+was ever provisioned. Azure AI Foundry requires a subscription, which
+requires a credit card for identity verification even on the free tier,
+unlike Fabric's trial. GitHub Models is free and card-less but rate-limited
+to roughly 50 requests a day on the larger models, which supports a short
+clip rather than a full match.
 
-### 3. Record the video
+Chasing it in the last three days risked ending the 27th with a half-wired
+agent and no video. The trade was to spend that time closing brief (e) and
+(vi) instead - both now done, both deterministic, both scored under
+criterion 5.
 
-Start no later than 24 October. See `docs/demo-script.md`.
+The work is not wasted if it is picked up later: the Fact Ledger stores
+structured claims with evidence, and `Director(require_verified=True)`
+already refuses to emit anything a Verifier has not passed. The sockets are
+there.
 
 ---
 

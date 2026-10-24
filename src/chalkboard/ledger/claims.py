@@ -9,6 +9,12 @@ higher" - and those are the ones that actually need reasoning. Everything
 here is arithmetic, and arithmetic should never be delegated to a language
 model.
 
+Each builder emits a **template key and parameters** rather than a
+hand-written sentence, and the canonical English `claim` is rendered from
+that same pair. One source of truth, so the stored sentence and the
+localised one can never drift apart, and brief (vi) comes free - see
+language.py.
+
 Claim text is deliberately flat. "Calderwick City completed 85% of their
 passes in the last two minutes" is a fact; making it read well is the
 Storyteller's job. Keeping voice out of the ledger is what lets the same
@@ -25,11 +31,12 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+from chalkboard import language
 from chalkboard.contracts import (
     ClaimType,
+    EventType,
     EvidenceKind,
     EvidenceRef,
-    EventType,
     LedgerEntry,
     MatchEvent,
     MatchMeta,
@@ -44,9 +51,11 @@ VERSION = "0.1"
 # be argued with - they are editorial judgements, not facts.
 PASS_DIFFICULTY = 0.68
 PASS_BYPASSED = 5
+PASS_PROGRESSIVE_M = 30.0
 CARRY_NOTABLE_M = 18.0
 PRESSURE_NOTABLE_MS = 1500
 CONTROL_SWING = 0.22
+CONTROL_BALANCED = 0.08
 PRESSURE_SWING = 0.08
 TEMPO_SWING = 2.5
 SPRINT_MS = 7.6                 # m/s - a genuine sprint
@@ -67,11 +76,9 @@ class ClaimBuilder:
         self.name_of = {p.player_id: p.name
                         for t in meta.teams for p in t.players}
         self.team_name = {t.team_id: t.name for t in meta.teams}
-        self.team_short = {t.team_id: t.short_name for t in meta.teams}
         self.team_of = {p.player_id: t.team_id
                         for t in meta.teams for p in t.players}
 
-        self._goals: dict[str, int] = {t.team_id: 0 for t in meta.teams}
         self._player_goals: dict[str, int] = {}
         self._top_speed: dict[str, float] = {}
         self._distance: dict[str, float] = {}
@@ -83,7 +90,7 @@ class ClaimBuilder:
 
     # -- helper ---------------------------------------------------------
 
-    def _add(self, *, period: int, t_ms: int, claim: str,
+    def _add(self, *, period: int, t_ms: int, template: str, params: dict,
              claim_type: ClaimType, subject_ids: list[str], method: str,
              evidence: list[EvidenceRef], confidence: float = 0.98,
              value: Optional[float] = None, unit: Optional[str] = None,
@@ -94,9 +101,11 @@ class ClaimBuilder:
             match_id=self.meta.match_id,
             period=period,
             t_ms=t_ms,
-            claim=claim,
+            claim=language.render(template, params, language.DEFAULT_LOCALE),
             claim_type=claim_type,
             subject_ids=subject_ids,
+            template=template,
+            params=params,
             value=value,
             unit=unit,
             window_ms=window_ms,
@@ -129,17 +138,16 @@ class ClaimBuilder:
     def _shot(self, e: MatchEvent) -> list[LedgerEntry]:
         d = e.detail
         who = self.name_of[e.player_id]
-        team = self.team_name[e.team_id]
         out: list[LedgerEntry] = []
 
         if d.goal:
-            self._goals[e.team_id] += 1
             self._player_goals[e.player_id] = \
                 self._player_goals.get(e.player_id, 0) + 1
             out.append(self._add(
                 period=e.period, t_ms=e.t_ms,
-                claim=(f"{who} scored for {team} from {d.distance_m:.1f} m, "
-                       f"a chance worth {d.xg:.2f} expected goals."),
+                template="goal",
+                params={"player": who, "team": self.team_name[e.team_id],
+                        "distance": d.distance_m, "xg": d.xg},
                 claim_type=ClaimType.METRIC,
                 subject_ids=[e.player_id, e.team_id],
                 method="goal_claim", evidence=self._from_event(e),
@@ -147,23 +155,24 @@ class ClaimBuilder:
             ))
             tally = self._player_goals[e.player_id]
             if tally >= 2:
-                word = {2: "a brace", 3: "a hat-trick"}.get(tally, f"{tally} goals")
+                key = {2: "milestone.brace",
+                       3: "milestone.hattrick"}.get(tally, "milestone.many")
                 out.append(self._add(
                     period=e.period, t_ms=e.t_ms,
-                    claim=f"{who} has scored {word} in this match.",
+                    template=key, params={"player": who, "goals": tally},
                     claim_type=ClaimType.MILESTONE,
                     subject_ids=[e.player_id, e.team_id],
                     method="scoring_milestone", evidence=self._from_event(e),
                     value=float(tally), unit="goals", confidence=1.0,
                 ))
         else:
-            verdict = ("was blocked" if d.blocked
-                       else "was on target" if d.on_target
-                       else "went off target")
+            key = ("shot.blocked" if d.blocked
+                   else "shot.on_target" if d.on_target
+                   else "shot.off_target")
             out.append(self._add(
                 period=e.period, t_ms=e.t_ms,
-                claim=(f"{who} shot from {d.distance_m:.1f} m and it {verdict}; "
-                       f"the chance was worth {d.xg:.2f} expected goals."),
+                template=key,
+                params={"player": who, "distance": d.distance_m, "xg": d.xg},
                 claim_type=ClaimType.METRIC,
                 subject_ids=[e.player_id, e.team_id],
                 method="shot_claim", evidence=self._from_event(e),
@@ -175,28 +184,31 @@ class ClaimBuilder:
         d = e.detail
         notable = (d.difficulty >= PASS_DIFFICULTY
                    or d.opponents_bypassed >= PASS_BYPASSED
-                   or (d.progressive and d.distance_m >= 30.0))
+                   or (d.progressive and d.distance_m >= PASS_PROGRESSIVE_M))
         if not notable or not d.completed:
             return []
 
-        who = self.name_of[e.player_id]
-        bits = [f"{d.distance_m:.0f} m"]
-        if d.opponents_bypassed:
-            bits.append(f"past {d.opponents_bypassed} opponents")
-        if d.into_final_third:
-            bits.append("into the final third")
-        elif d.progressive:
-            bits.append("advancing the ball")
+        bypassed = d.opponents_bypassed > 0
+        if bypassed and d.into_final_third:
+            key = "pass.bypassed_final_third"
+        elif bypassed:
+            key = "pass.bypassed"
+        elif d.into_final_third:
+            key = "pass.final_third"
+        else:
+            key = "pass.plain"
 
         return [self._add(
             period=e.period, t_ms=e.t_ms,
-            claim=(f"{who} completed a pass of {', '.join(bits)}, "
-                   f"rated {d.difficulty:.2f} for difficulty."),
+            template=key,
+            params={"player": self.name_of[e.player_id],
+                    "distance": d.distance_m,
+                    "bypassed": d.opponents_bypassed,
+                    "difficulty": d.difficulty},
             claim_type=ClaimType.METRIC,
             subject_ids=[e.player_id, e.team_id],
             method="pass_claim", evidence=self._from_event(e),
-            value=d.difficulty, unit="difficulty",
-            confidence=0.95,
+            value=d.difficulty, unit="difficulty", confidence=0.95,
         )]
 
     # Carries are detected but produce no claim yet - CARRY has no typed
@@ -207,12 +219,13 @@ class ClaimBuilder:
         d = e.detail
         if d.duration_ms < PRESSURE_NOTABLE_MS or len(d.pressing_player_ids) < 2:
             return []
-        who = self.name_of[e.player_id]
         return [self._add(
             period=e.period, t_ms=e.t_ms,
-            claim=(f"{who} was closed down by {len(d.pressing_player_ids)} "
-                   f"opponents for {d.duration_ms / 1000:.1f} s, the nearest "
-                   f"within {d.min_distance_m:.1f} m."),
+            template="pressure",
+            params={"player": self.name_of[e.player_id],
+                    "opponents": len(d.pressing_player_ids),
+                    "seconds": d.duration_ms / 1000,
+                    "distance": d.min_distance_m},
             claim_type=ClaimType.PATTERN,
             subject_ids=[e.player_id, e.team_id],
             method="pressure_event", evidence=self._from_event(e),
@@ -249,21 +262,27 @@ class ClaimBuilder:
 
         previous = self.ledger.latest(claim_type=ClaimType.PATTERN,
                                       method=f"control_state@{VERSION}")
-        if margin < 0.08:
-            text = (f"Neither side is controlling the game: "
-                    f"possession is {snap.teams[0].possession_share:.0%} to "
-                    f"{snap.teams[1].possession_share:.0%} with chaos at "
-                    f"{snap.chaos:.2f}.")
+        if margin < CONTROL_BALANCED:
+            template = "control.balanced"
+            params = {
+                "possession": round(snap.teams[0].possession_share * 100),
+                "possession_other": round(snap.teams[1].possession_share * 100),
+                "chaos": snap.chaos,
+            }
             subjects = [t.team_id for t in snap.teams]
         else:
-            text = (f"{self.team_name[lead.team_id]} are controlling the game: "
-                    f"{lead.possession_share:.0%} of the ball, "
-                    f"{lead.pass_completion:.0%} pass completion, territory "
-                    f"{lead.territory:.2f}.")
+            template = "control.leader"
+            params = {
+                "team": self.team_name[lead.team_id],
+                "possession": round(lead.possession_share * 100),
+                "completion": round(lead.pass_completion * 100),
+                "territory": lead.territory,
+            }
             subjects = [lead.team_id]
 
         return [self._add(
-            period=snap.period, t_ms=snap.t_ms, claim=text,
+            period=snap.period, t_ms=snap.t_ms,
+            template=template, params=params,
             claim_type=ClaimType.PATTERN, subject_ids=subjects,
             method="control_state", evidence=ev,
             value=round(margin, 3), unit="index", window_ms=window,
@@ -281,16 +300,15 @@ class ClaimBuilder:
             if before is None:
                 continue
 
-            direction = "stepped up" if team.pressure > before else "dropped off"
             previous = self.ledger.latest(
                 claim_type=ClaimType.PATTERN, subject=team.team_id,
                 method=f"pressure_state@{VERSION}")
             out.append(self._add(
                 period=snap.period, t_ms=snap.t_ms,
-                claim=(f"{self.team_name[team.team_id]} have {direction} their "
-                       f"press: pressure index {before:.2f} to "
-                       f"{team.pressure:.2f}, line height "
-                       f"{team.line_height:.2f}."),
+                template="press.up" if team.pressure > before else "press.down",
+                params={"team": self.team_name[team.team_id],
+                        "before": before, "after": team.pressure,
+                        "line_height": team.line_height},
                 claim_type=ClaimType.PATTERN, subject_ids=[team.team_id],
                 method="pressure_state", evidence=ev,
                 value=team.pressure, unit="index", window_ms=window,
@@ -306,12 +324,11 @@ class ClaimBuilder:
         if abs(snap.tempo - self._last_tempo) < TEMPO_SWING:
             return []
         before, self._last_tempo = self._last_tempo, snap.tempo
-        direction = "quickened" if snap.tempo > before else "slowed"
         return [self._add(
             period=snap.period, t_ms=snap.t_ms,
-            claim=(f"The game has {direction}: {before:.1f} to "
-                   f"{snap.tempo:.1f} passes per minute, rhythm "
-                   f"{snap.rhythm:.2f}."),
+            template="tempo.up" if snap.tempo > before else "tempo.down",
+            params={"before": before, "after": snap.tempo,
+                    "rhythm": snap.rhythm},
             claim_type=ClaimType.COMPARISON,
             subject_ids=[t.team_id for t in snap.teams],
             method="tempo_compare", evidence=ev,
@@ -339,8 +356,8 @@ class ClaimBuilder:
                     self._milestones_hit.add(key)
                     out.append(self._add(
                         period=frame.period, t_ms=frame.t_ms,
-                        claim=(f"{self.name_of[pid]} hit {p.speed:.1f} m/s, "
-                               f"his quickest of the match so far."),
+                        template="speed",
+                        params={"player": self.name_of[pid], "speed": p.speed},
                         claim_type=ClaimType.MILESTONE,
                         subject_ids=[pid, self.team_of[pid]],
                         method="speed_milestone",
@@ -356,8 +373,9 @@ class ClaimBuilder:
                     self._milestones_hit.add(key)
                     out.append(self._add(
                         period=frame.period, t_ms=frame.t_ms,
-                        claim=(f"{self.name_of[pid]} has covered "
-                               f"{mark / 1000:.0f} km."),
+                        template="distance",
+                        params={"player": self.name_of[pid],
+                                "km": float(mark) / 1000},
                         claim_type=ClaimType.MILESTONE,
                         subject_ids=[pid, self.team_of[pid]],
                         method="distance_milestone",
@@ -366,4 +384,3 @@ class ClaimBuilder:
                         value=float(mark), unit="m", confidence=1.0,
                     ))
         return out
-

@@ -112,12 +112,25 @@ def export(seed: int, minutes: float | None, hz: int, open_browser: bool) -> Pat
                   for loc in language.LOCALES}
         heads = {loc: language.headline(entry.method, loc)
                  for loc in language.LOCALES}
+        fallback = to_row(int((packet.valid_from_ms
+                               - period_offset[entry.period])
+                              / 1000 * meta.tracking_hz))
+        first = to_row(seqs[0]) if seqs else fallback
+        last = to_row(seqs[-1]) if seqs else fallback
+
+        # `at` is when the claim becomes known, and is what the live feed and
+        # overlays key on. For an event that is when it finishes. For a
+        # claim about a window ("controlling the game") the evidence spans
+        # two minutes, and it only exists once that window closes - using the
+        # window's start would announce it two minutes before it was true.
+        # `row` is where to seek when the claim is clicked: the start of the
+        # event, but for a window claim the moment it was made.
+        windowed = bool(trace["metrics"])
         claims.append({
             "id": entry.ledger_id,
-            "row": to_row(seqs[0]) if seqs else to_row(
-                int((packet.valid_from_ms - period_offset[entry.period])
-                    / 1000 * meta.tracking_hz)),
-            "to": to_row(seqs[-1]) if seqs else None,
+            "row": last if windowed else first,
+            "at": last,
+            "to": last,
             "dur": packet.duration_ms,
             "prio": packet.priority,
             "type": packet.overlay_type.value,
@@ -130,7 +143,7 @@ def export(seed: int, minutes: float | None, hz: int, open_browser: bool) -> Pat
             "ev": len(trace["events"]),
             "fr": len(trace["frames"]),
         })
-    claims.sort(key=lambda c: c["row"])
+    claims.sort(key=lambda c: c["at"])
 
     home, away = meta.teams
     payload = {
@@ -223,6 +236,12 @@ _TEMPLATE = r"""<!doctype html>
   .feed .list { overflow-y:auto; flex:1; }
   .claim { padding:9px 13px; border-bottom:1px solid var(--line);
            cursor:pointer; font-size:12.5px; }
+  .claim.new { animation:arrive 2.2s ease-out; }
+  @keyframes arrive {
+    from { background:rgba(167,139,250,.38); transform:translateY(-10px); opacity:.2; }
+    18%  { transform:translateY(0); opacity:1; }
+    to   { background:transparent; }
+  }
   .claim:hover { background:#1e222c; }
   .claim.sel { background:#232838; border-left:3px solid var(--accent);
                padding-left:10px; }
@@ -279,6 +298,7 @@ _TEMPLATE = r"""<!doctype html>
   <label>Language
     <select id="lang"></select>
   </label>
+  <label><input type="checkbox" id="liveToggle" checked> Live feed</label>
   <span class="sub" id="focusStats"></span>
 </div>
 
@@ -296,13 +316,14 @@ _TEMPLATE = r"""<!doctype html>
       </select>
     </div>
     <p class="hint" id="hint">
-      Click a claim to jump to it. The players it is about are ringed and the
-      pass or shot behind it is drawn on the pitch.
+      Claims appear as the match reaches them. Click one to jump to it: the
+      players it is about are ringed and the pass or shot behind it is drawn
+      on the pitch.
     </p>
   </div>
 
   <div class="feed">
-    <h2><span id="claimCount"></span> ledger claims</h2>
+    <h2><span id="claimCount"></span> <span id="feedLabel">claims so far</span></h2>
     <div class="list" id="list"></div>
   </div>
 </div>
@@ -354,65 +375,109 @@ for(const l of D.locales){
 }
 
 /* ---------- claim feed ---------- */
+/* Live commentary. A claim is only in the feed once the clock has reached
+   the moment it was made (c.at). Listing the whole match from kick-off
+   looked static and, worse, announced goals before they happened. Newest
+   sits at the top, like a live blog. Untick "Live feed" to browse the
+   complete ledger instead. */
 const list=document.getElementById('list');
-let nodes=[], shown=[];
+const FEED_CAP=150, FEED_JUMP=40;
+let nodes=[], shown=[], live=true, nextClaim=0, lastFedAt=0;
 
-function visibleClaims(){
-  /* Brief (e): player-focused mode. The same ledger, read through one
-     player - not a different system, a different lens on it. */
-  return focusIdx<0 ? D.claims.map((c,k)=>[c,k])
-                    : D.claims.map((c,k)=>[c,k]).filter(([c])=>c.players.includes(focusIdx));
+function passesFocus(c){ return focusIdx<0 || c.players.includes(focusIdx); }
+
+function makeNode(c,k){
+  const row=D.frames[Math.min(c.at,D.frames.length-1)];
+  const mins=row?Math.floor(row[1]/600)+(row[0]===1?0:45):0;
+  const el=document.createElement('div');
+  el.className='claim';
+  el.innerHTML=`<div class="m"><span>${mins}'</span><span class="h">${c.head[locale]}</span></div>`+
+    `<div class="b">${c.body[locale]}</div>`+
+    `<div class="p">${c.method} \u00b7 ${c.ev} event(s), ${c.fr} frame ref(s)</div>`;
+  el.onclick=()=>pick(k);
+  return el;
+}
+
+function updateFeedHeader(){
+  document.getElementById('claimCount').textContent=shown.length;
+  document.getElementById('feedLabel').textContent =
+    live ? 'claims so far' : 'ledger claims';
 }
 
 function buildFeed(){
+  /* Full rebuild: on focus, language or live-mode change, and whenever the
+     clock jumps. A claim the user has explicitly picked stays in the feed
+     even if the clock has not reached it - they asked for it. */
   list.innerHTML='';
-  shown=visibleClaims();
-  nodes=shown.map(([c,k])=>{
-    const row=D.frames[Math.min(c.row,D.frames.length-1)];
-    const mins=row?Math.floor(row[1]/600)+(row[0]===1?0:45):0;
-    const el=document.createElement('div');
-    el.className='claim';
-    el.innerHTML=`<div class="m"><span>${mins}'</span><span class="h">${c.head[locale]}</span></div>`+
-      `<div class="b">${c.body[locale]}</div>`+
-      `<div class="p">${c.method} \u00b7 ${c.ev} event(s), ${c.fr} frame ref(s)</div>`;
-    el.onclick=()=>pick(k);
-    list.appendChild(el);
-    return el;
-  });
-  document.getElementById('claimCount').textContent=shown.length;
+  let pairs=D.claims.map((c,k)=>[c,k]).filter(([c])=>passesFocus(c));
+  if(live){
+    pairs=pairs.filter(([c])=>c.at<=i || (picked && c.id===picked.id));
+    pairs.reverse();                      /* newest first */
+    pairs=pairs.slice(0,FEED_CAP);
+  }
+  shown=pairs;
+  nodes=shown.map(([c,k])=>{ const el=makeNode(c,k); list.appendChild(el); return el; });
+  nextClaim=D.claims.findIndex(c=>c.at>i);
+  if(nextClaim<0) nextClaim=D.claims.length;
+  lastFedAt=i;
   if(picked){
     const at=shown.findIndex(([,k])=>D.claims[k].id===picked.id);
     if(at>=0) nodes[at].classList.add('sel');
   }
+  updateFeedHeader();
+}
+
+function syncFeed(){
+  if(!live) return;
+  /* Backwards, or a big forward jump: rebuild. Otherwise just append. */
+  if(i<lastFedAt || i-lastFedAt>FEED_JUMP){ buildFeed(); return; }
+  let added=false;
+  while(nextClaim<D.claims.length && D.claims[nextClaim].at<=i){
+    const c=D.claims[nextClaim], k=nextClaim; nextClaim++;
+    if(!passesFocus(c)) continue;
+    const el=makeNode(c,k);
+    el.classList.add('new');
+    list.insertBefore(el,list.firstChild);
+    shown.unshift([c,k]); nodes.unshift(el);
+    added=true;
+  }
+  while(nodes.length>FEED_CAP){ list.removeChild(nodes.pop()); shown.pop(); }
+  lastFedAt=i;
+  if(added){ list.scrollTop=0; updateFeedHeader(); }
 }
 
 function pick(k){
   picked=D.claims[k];
-  nodes.forEach(n=>n.classList.remove('sel'));
-  const at=shown.findIndex(([,kk])=>kk===k);
-  if(at>=0){ nodes[at].classList.add('sel'); nodes[at].scrollIntoView({block:'nearest'}); }
   i=Math.max(0,picked.row-8);
   playing=false; btn.textContent='Play';
+  buildFeed();
+  const at=shown.findIndex(([,kk])=>kk===k);
+  if(at>=0) nodes[at].scrollIntoView({block:'nearest'});
   render();
 }
 
 focusSel.onchange=e=>{ focusIdx=+e.target.value; buildFeed(); render(); };
 langSel.onchange=e=>{ locale=e.target.value; buildFeed(); render(); };
+document.getElementById('liveToggle').onchange=e=>{ live=e.target.checked; buildFeed(); };
 
 /* Distance and top speed are derived on demand rather than exported per
    frame - 22 extra numbers on every row would add a third to the file for
-   a figure only one player needs at a time. */
+   a figure only one player needs at a time. Accumulated incrementally:
+   re-summing from kick-off on every animation frame was O(match). */
+let fsCache={idx:-2, upTo:-1, dist:0, top:0, px:null, py:null};
 function focusStats(upTo){
   if(focusIdx<0) return null;
-  let dist=0, top=0, px=null, py=null;
-  for(let k=0;k<=upTo;k++){
+  if(fsCache.idx!==focusIdx || upTo<fsCache.upTo)
+    fsCache={idx:focusIdx, upTo:-1, dist:0, top:0, px:null, py:null};
+  for(let k=fsCache.upTo+1;k<=upTo;k++){
     const f=D.frames[k];
     const x=f[5+focusIdx*STRIDE], y=f[6+focusIdx*STRIDE], s=f[7+focusIdx*STRIDE];
-    if(px!==null) dist+=Math.hypot(x-px,y-py);
-    px=x; py=y; if(s>top) top=s;
+    if(fsCache.px!==null) fsCache.dist+=Math.hypot(x-fsCache.px,y-fsCache.py);
+    fsCache.px=x; fsCache.py=y; if(s>fsCache.top) fsCache.top=s;
   }
+  fsCache.upTo=upTo;
   const now=D.frames[upTo][7+focusIdx*STRIDE];
-  return {dist, top, now, claims: shown.length};
+  return {dist:fsCache.dist, top:fsCache.top, now, claims: shown.length};
 }
 
 /* ---------- pitch ---------- */
@@ -466,6 +531,7 @@ function drawOverlay(c){
 }
 
 function render(){
+  syncFeed();
   const f=frameAt(i);
   drawPitch();
 
@@ -528,7 +594,7 @@ function render(){
   let due=null;
   for(const c of D.claims){
     const span=Math.max(1,Math.round(c.dur/1000*D.fps));
-    if(i>=c.row && i<c.row+span && (!due || c.prio>due.prio)) due=c;
+    if(i>=c.at && i<c.at+span && (!due || c.prio>due.prio)) due=c;
   }
   if(live) drawOverlay(live);
   else if(due) drawOverlay(due);

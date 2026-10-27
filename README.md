@@ -82,7 +82,13 @@ to do. A 0-0 makes the system look like it has nothing to say.
 Writes a self-contained HTML file to `out/` and opens it. No server, no
 dependencies - the data is embedded, so the file can be sent to someone.
 
-The claim feed sits beside the pitch. **Click any claim and the match seeks to
+The claim feed is **live commentary**: a claim appears only once the clock has
+reached the moment it was made, newest at the top. Every claim carries the
+frame at which it became known, so nothing is announced early - a claim about
+a two-minute window ("controlling the game") appears when that window closes,
+not when it opens. Untick "Live feed" to browse the whole ledger instead.
+
+**Click any claim and the match seeks to
 the moment it describes, the players it is about are ringed, and the pass or
 shot behind it is drawn on the pitch.** That is the whole argument of the
 project made visible: the sentence is not a story about the match, it is a

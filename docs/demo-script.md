@@ -41,7 +41,14 @@ not show a logo.
 
 ## 0:12 - 0:40   The money shot
 
-**Show:** the viewer, match running. Pause. Click a claim in the feed.
+**Set up before you hit record:** open the viewer, set speed to 4x, drag the
+slider to about 80:00, then press Play. The feed is live commentary - claims
+drop in at the top as the clock reaches them, and the 82' and 83' goals
+arrive on screen while you watch. That is a much better opening than a
+static list.
+
+**Show:** the match running, claims arriving. When the goal lands, pause and
+click that claim in the feed.
 
 The scorer rings purple, the shot trajectory draws on the pitch, the
 lower-third renders, the feed entry highlights. Let it breathe - this is the

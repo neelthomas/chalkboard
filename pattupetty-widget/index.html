@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#181a30">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pattupetty">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Pattupetty</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="card">
+  <header class="top">
+    <h1>Pattupetty</h1>
+    <div class="top-actions">
+      <button id="popout" title="Open as small window">&#x29C9;</button>
+      <button id="gear" title="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <section class="player-wrap">
+    <div id="player"></div>
+  </section>
+  <p id="now" class="now">Pick a mood or paste a link to start</p>
+
+  <section class="controls">
+    <button id="prev" aria-label="Previous">&#9198;</button>
+    <button id="toggle" class="big" aria-label="Play or pause">&#9654;</button>
+    <button id="next" aria-label="Next">&#9197;</button>
+    <select id="sleep" aria-label="Sleep timer">
+      <option value="0">Sleep: off</option>
+      <option value="15">15 min</option>
+      <option value="30">30 min</option>
+      <option value="60">60 min</option>
+    </select>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="moods" class="on">Moods</button>
+    <button data-tab="library">Library</button>
+    <button data-tab="search">Search</button>
+    <button data-tab="link">Link</button>
+  </nav>
+
+  <section id="tab-moods" class="tab"><div id="moods" class="chips"></div></section>
+
+  <section id="tab-library" class="tab" hidden>
+    <div class="row"><button id="signin">Sign in with Google</button><span id="who"></span></div>
+    <div id="lib-list" class="list"></div>
+  </section>
+
+  <section id="tab-search" class="tab" hidden>
+    <form id="search-form" class="row">
+      <input id="q" type="search" placeholder="Search songs (English or Malayalam)" autocomplete="off">
+      <button type="submit">Go</button>
+    </form>
+    <div id="results" class="list"></div>
+  </section>
+
+  <section id="tab-link" class="tab" hidden>
+    <form id="link-form" class="row">
+      <input id="link" type="text" placeholder="Paste a YouTube video or playlist link" autocomplete="off">
+      <button type="submit">Play</button>
+    </form>
+    <p class="hint">Works without signing in.</p>
+  </section>
+
+  <p id="msg" class="msg" role="status"></p>
+</main>
+
+<dialog id="settings">
+  <form method="dialog">
+    <h2>Settings</h2>
+    <label>Google OAuth Client ID
+      <input id="client-id" type="text" placeholder="123...apps.googleusercontent.com">
+    </label>
+    <p class="hint">Needed only for Library and Search. See README for the 5-minute setup.</p>
+    <menu><button value="cancel">Close</button><button id="save-settings" value="default">Save</button></menu>
+  </form>
+</dialog>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="app.js"></script>
+</body>
+</html>
